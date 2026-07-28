@@ -162,8 +162,16 @@ curl -sS https://<your-app>.deno.net/google-fonts \
 ### `GET /healthz`
 
 ```json
-{ "status": "ok" }
+{ "status": "ok", "checks": { "sandboxToken": false, "sandboxOrgRequired": false } }
 ```
+
+`checks` is a deployment readiness probe. It reports **booleans only** — never token values, lengths
+or prefixes:
+
+- `sandboxToken: false` → `DENO_DEPLOY_TOKEN` is not set, so `/google-fonts` will return
+  `503 evaluation_failed`.
+- `sandboxOrgRequired: true` → a personal `ddp_…` token is configured but `DENO_DEPLOY_ORG` is
+  missing. Use an organization `ddo_…` token instead, or set the org slug.
 
 ### Errors
 
@@ -356,7 +364,14 @@ deployctl deploy --entrypoint=src/index.ts
 ### 2. Deno Sandbox token
 
 1. In the Deno Deploy console, open **Settings → Organization Tokens**.
-2. Create a token and add it to the app's environment as `DENO_DEPLOY_TOKEN`.
+2. Create an **organization** token (it starts with `ddo_`).
+3. Add it to the app's environment as `DENO_DEPLOY_TOKEN`, then redeploy.
+
+A personal token (`ddp_`) also works, but then `DENO_DEPLOY_ORG` must be set to your organization
+slug as well.
+
+Verify with `curl https://<your-app>.deno.net/healthz` — `checks.sandboxToken` must be `true` and
+`checks.sandboxOrgRequired` must be `false`.
 
 This token lets the app provision sandboxes. It is the only required secret and must never be
 committed — use `.env.example` as the template.
@@ -382,6 +397,7 @@ All optional except the token; see `.env.example`.
 | Variable                      | Default                | Purpose                      |
 | ----------------------------- | ---------------------- | ---------------------------- |
 | `DENO_DEPLOY_TOKEN`           | —                      | **Required** for sandboxes   |
+| `DENO_DEPLOY_ORG`             | —                      | Only with a `ddp_` token     |
 | `GOOGLE_FONTS_METADATA_URL`   | upstream metadata.json | Override the source document |
 | `METADATA_REVALIDATE_SECONDS` | `86400`                | Revalidation interval        |
 | `SANDBOX_TIMEOUT_MS`          | `20000`                | Hard guest deadline          |

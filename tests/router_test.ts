@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import { createRouter } from "../src/index.ts";
+import { createRouter, readiness } from "../src/index.ts";
 import { ApiError, ErrorCode } from "../src/http.ts";
 import { RateLimiter } from "../src/rate-limit.ts";
 
@@ -17,10 +17,33 @@ function req(path: string, init: RequestInit = {}): Request {
   return new Request(`https://api.test${path}`, init);
 }
 
-Deno.test("healthz responds ok", async () => {
+Deno.test("healthz responds ok with readiness checks", async () => {
   const response = await router()(req("/healthz"));
   assertEquals(response.status, 200);
-  assertEquals(await response.json(), { status: "ok" });
+  const body = await response.json();
+  assertEquals(body.status, "ok");
+  assertEquals(typeof body.checks.sandboxToken, "boolean");
+  assertEquals(typeof body.checks.sandboxOrgRequired, "boolean");
+});
+
+Deno.test("readiness never exposes token material", () => {
+  Deno.env.set("DENO_DEPLOY_TOKEN", "ddp_supersecretvalue");
+  Deno.env.delete("DENO_DEPLOY_ORG");
+  try {
+    const checks = readiness();
+    assertEquals(checks, { sandboxToken: true, sandboxOrgRequired: true });
+    assertEquals(JSON.stringify(checks).includes("supersecret"), false);
+    Deno.env.set("DENO_DEPLOY_ORG", "acme");
+    assertEquals(readiness().sandboxOrgRequired, false);
+  } finally {
+    Deno.env.delete("DENO_DEPLOY_TOKEN");
+    Deno.env.delete("DENO_DEPLOY_ORG");
+  }
+});
+
+Deno.test("readiness reports a missing token", () => {
+  Deno.env.delete("DENO_DEPLOY_TOKEN");
+  assertEquals(readiness().sandboxToken, false);
 });
 
 Deno.test("unknown routes return 404 with the error envelope", async () => {

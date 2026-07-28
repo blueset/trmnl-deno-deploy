@@ -17,6 +17,20 @@ export interface RouteHandlers {
   googleFonts: (request: Request) => Promise<Response>;
 }
 
+/**
+ * Deployment readiness, reported by `/healthz`.
+ *
+ * Only booleans are exposed — never token values, lengths or prefixes.
+ */
+export function readiness(): { sandboxToken: boolean; sandboxOrgRequired: boolean } {
+  const token = Deno.env.get("DENO_DEPLOY_TOKEN") ?? "";
+  return {
+    sandboxToken: token !== "",
+    // Personal tokens (ddp_) additionally require DENO_DEPLOY_ORG.
+    sandboxOrgRequired: token.startsWith("ddp_") && !Deno.env.get("DENO_DEPLOY_ORG"),
+  };
+}
+
 export interface RouterOptions {
   rateLimiter?: RateLimiter;
 }
@@ -54,7 +68,10 @@ export function createRouter(handlers: RouteHandlers, options: RouterOptions = {
         if (request.method !== "GET" && request.method !== "HEAD") {
           return methodNotAllowed("GET, HEAD");
         }
-        return jsonResponse({ status: "ok" }, { headers: { "cache-control": "no-store" } });
+        return jsonResponse(
+          { status: "ok", checks: readiness() },
+          { headers: { "cache-control": "no-store" } },
+        );
       }
 
       if (path === "/google-fonts") {
@@ -92,5 +109,15 @@ export const router: Router = createRouter({
 });
 
 if (import.meta.main) {
+  const checks = readiness();
+  if (!checks.sandboxToken) {
+    logger.warn("startup.sandbox_unconfigured", {
+      hint: "DENO_DEPLOY_TOKEN is not set; /google-fonts will return 503",
+    });
+  } else if (checks.sandboxOrgRequired) {
+    logger.warn("startup.sandbox_unconfigured", {
+      hint: "a ddp_ personal token also requires DENO_DEPLOY_ORG",
+    });
+  }
   Deno.serve((request, info) => router(request, info.remoteAddr.hostname));
 }
