@@ -29,7 +29,7 @@ jobs:
         run: deno lint
 
       - name: Type check
-        run: deno check src/ tests/
+        run: deno check src/ tests/ scripts/
 
       # Unit tests never touch the network or a live Deno Sandbox. The opt-in
       # integration suite (tests/google-fonts/sandbox_integration_test.ts) stays

@@ -324,6 +324,27 @@ fails with a controlled `503`.
 Locally, Deno KV runs in memory and the Web Cache API falls back to an in-process map, so caching
 semantics are preserved without external services.
 
+### Diagnosing sandbox problems
+
+If `POST /google-fonts` returns `503 evaluation_failed`, the service is deliberately hiding the
+underlying error from clients. Two ways to see it:
+
+1. **Deno Deploy logs** — look for `"event":"sandbox.execution"` with `"outcome":"driver_error"`.
+   The `reason` and `detail` fields carry the real, token-redacted error.
+2. **Locally**, with the same token the deployment uses:
+
+   ```bash
+   export DENO_DEPLOY_TOKEN=ddo_...   # PowerShell: $env:DENO_DEPLOY_TOKEN="ddo_..."
+   deno task doctor
+   ```
+
+   `scripts/sandbox-doctor.ts` provisions a real sandbox with a two-font input and prints the exit
+   code, stderr and result frame — or the raw error name, detail, cause and HTTP status on failure.
+   It never prints the token.
+
+Comparing the two tells you whether the problem is your configuration, the sandbox platform, or this
+service.
+
 ### Testing
 
 ```bash

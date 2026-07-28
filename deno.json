@@ -8,9 +8,10 @@
     "fmt": "deno fmt",
     "fmt:check": "deno fmt --check",
     "lint": "deno lint",
-    "check": "deno check src/ tests/",
+    "check": "deno check src/ tests/ scripts/",
     "test": "deno test --allow-env --allow-read --unstable-kv tests/",
     "test:integration": "DENO_SANDBOX_INTEGRATION=1 deno test --allow-all --unstable-kv tests/google-fonts/sandbox_integration_test.ts",
+    "doctor": "deno run --allow-all scripts/sandbox-doctor.ts",
     "ci": "deno task fmt:check && deno task lint && deno task check && deno task test"
   },
   "imports": {
