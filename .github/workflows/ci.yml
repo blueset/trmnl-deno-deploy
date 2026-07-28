@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Cache dependencies
+        run: deno install --entrypoint src/index.ts
+
+      - name: Check formatting
+        run: deno fmt --check
+
+      - name: Lint
+        run: deno lint
+
+      - name: Type check
+        run: deno check src/ tests/
+
+      # Unit tests never touch the network or a live Deno Sandbox. The opt-in
+      # integration suite (tests/google-fonts/sandbox_integration_test.ts) stays
+      # skipped because DENO_SANDBOX_INTEGRATION is unset.
+      - name: Unit tests
+        run: deno test --allow-env --allow-read --unstable-kv tests/
