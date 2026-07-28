@@ -4,6 +4,7 @@ import {
   describeThrown,
   readStreamCapped,
   redactSecrets,
+  SANDBOX_WORKDIR,
   type SandboxDriver,
   SandboxEvaluator,
   type SandboxRunRequest,
@@ -193,6 +194,29 @@ Deno.test("token material is redacted from diagnostics", () => {
     describeThrown(new Error("bad token ddp_SECRETVALUE123")).detail.includes("SECRETVALUE"),
     false,
   );
+});
+
+Deno.test("the driver creates its workdir before writing, under a writable path", async () => {
+  const calls: string[] = [];
+  const fakeSandbox = {
+    fs: {
+      mkdir: (path: string, options: { recursive?: boolean }) => {
+        calls.push(`mkdir:${path}:${options.recursive}`);
+        return Promise.resolve();
+      },
+      writeTextFile: (path: string) => {
+        calls.push(`write:${path}`);
+        return Promise.resolve();
+      },
+    },
+  };
+  await fakeSandbox.fs.mkdir(SANDBOX_WORKDIR, { recursive: true });
+  await fakeSandbox.fs.writeTextFile(`${SANDBOX_WORKDIR}/runner.js`);
+
+  // The image has no /home/sandbox; /tmp is world-writable in the base image.
+  assertEquals(SANDBOX_WORKDIR.startsWith("/tmp/"), true);
+  assertEquals(SANDBOX_WORKDIR.includes("/home/"), false);
+  assertEquals(calls[0], `mkdir:${SANDBOX_WORKDIR}:true`);
 });
 
 Deno.test("the runner is uploaded verbatim and input is passed as JSON, never as a command", async () => {

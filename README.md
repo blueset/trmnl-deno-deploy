@@ -274,9 +274,14 @@ Inside it, the service uploads two files and spawns Deno with an explicit, minim
 ```
 deno run --quiet --no-config --no-lock --no-remote --no-npm --cached-only \
   --deny-net --deny-env --deny-run --deny-ffi --deny-write --deny-sys \
-  --allow-read=/home/sandbox/input.json \
-  /home/sandbox/runner.js /home/sandbox/input.json
+  --allow-read=/tmp/trmnl-google-fonts/input.json \
+  /tmp/trmnl-google-fonts/runner.js /tmp/trmnl-google-fonts/input.json
 ```
+
+The working directory is created under `/tmp`: the base image has no `/home/sandbox` (its home is
+`/home/app`, owned by the unprivileged `app` user). `input.json` carries the full font array
+(multiple megabytes), so it is written as a chunked `ReadableStream` — a plain string would be sent
+as a single JSON-RPC WebSocket frame and fail.
 
 Additional controls:
 
@@ -342,7 +347,20 @@ underlying error from clients. Two ways to see it:
    code, stderr and result frame — or the raw error name, detail, cause and HTTP status on failure.
    It never prints the token.
 
-Comparing the two tells you whether the problem is your configuration, the sandbox platform, or this
+3. **Via the Deploy CLI**, often quickest since `deno.json` records the org and app:
+
+   ```bash
+   deno deploy logs --once --json --non-interactive   # recent logs, then exit
+   deno deploy sandbox create --timeout 5m            # poke a live sandbox
+   deno deploy sandbox copy ./probe.sh <id>:/tmp/probe.sh
+   deno deploy sandbox exec <id> -- sh /tmp/probe.sh
+   deno deploy sandbox kill <id>                      # always clean up
+   ```
+
+   Shell scripts copied from Windows must use LF endings, and `deno deploy logs` is where the
+   `sandbox.execution` / `driver_error` entries land.
+
+Comparing these tells you whether the problem is your configuration, the sandbox platform, or this
 service.
 
 ### Testing

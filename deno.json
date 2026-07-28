@@ -38,5 +38,9 @@
     "noUncheckedIndexedAccess": true,
     "lib": ["deno.ns", "deno.unstable", "dom", "esnext"]
   },
-  "exclude": ["coverage/", ".deno/"]
+  "exclude": ["coverage/", ".deno/"],
+  "deploy": {
+    "org": "1a23",
+    "app": "trmnl-deno-deploy"
+  }
 }

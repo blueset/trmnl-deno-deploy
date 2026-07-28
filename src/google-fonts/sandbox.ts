@@ -231,7 +231,15 @@ export interface DenoSandboxDriverOptions {
   region?: string;
 }
 
-const WORKDIR = "/home/sandbox";
+/**
+ * Working directory created inside the sandbox.
+ *
+ * The base image has no `/home/sandbox` (its home is `/home/app`, owned by the
+ * unprivileged `app` user), so the driver creates its own directory under the
+ * world-writable `/tmp` rather than assuming a layout.
+ */
+export const SANDBOX_WORKDIR = "/tmp/trmnl-google-fonts";
+const WORKDIR = SANDBOX_WORKDIR;
 const RUNNER_PATH = `${WORKDIR}/runner.js`;
 const INPUT_PATH = `${WORKDIR}/input.json`;
 
@@ -309,6 +317,7 @@ export class DenoSandboxDriver implements SandboxDriver {
     let timedOut = false;
 
     try {
+      await sandbox.fs.mkdir(WORKDIR, { recursive: true });
       await sandbox.fs.writeTextFile(RUNNER_PATH, request.runnerSource);
       // Streamed: the input carries the full font array (multiple megabytes).
       await sandbox.fs.writeTextFile(INPUT_PATH, chunkedTextStream(request.inputJson));
