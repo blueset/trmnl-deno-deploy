@@ -236,6 +236,39 @@ const RUNNER_PATH = `${WORKDIR}/runner.js`;
 const INPUT_PATH = `${WORKDIR}/input.json`;
 
 /**
+ * Minimal environment for the guest process.
+ *
+ * `clearEnv` drops everything inherited (so no secrets can leak in), but the
+ * spawned process still needs a `PATH` to resolve the `deno` binary.
+ */
+const GUEST_ENV: Record<string, string> = {
+  PATH: "/usr/local/bin:/usr/bin:/bin",
+  HOME: WORKDIR,
+};
+
+/**
+ * Wraps a large string as a chunked stream.
+ *
+ * `SandboxFs.writeTextFile` sends a plain string as one JSON-RPC WebSocket
+ * message, which fails for the multi-megabyte font array. Passing a
+ * `ReadableStream` routes it through the SDK's chunked transfer path instead.
+ * `TextEncoderStream` correctly rejoins surrogate pairs split across chunks.
+ */
+export function chunkedTextStream(text: string, chunkSize = 256 * 1024): ReadableStream<string> {
+  let offset = 0;
+  return new ReadableStream<string>({
+    pull(controller) {
+      if (offset >= text.length) {
+        controller.close();
+        return;
+      }
+      controller.enqueue(text.slice(offset, offset + chunkSize));
+      offset += chunkSize;
+    },
+  });
+}
+
+/**
  * Real driver backed by `@deno/sandbox`.
  *
  * Every run gets a brand-new sandbox with no outbound network, no secrets, no
@@ -277,7 +310,8 @@ export class DenoSandboxDriver implements SandboxDriver {
 
     try {
       await sandbox.fs.writeTextFile(RUNNER_PATH, request.runnerSource);
-      await sandbox.fs.writeTextFile(INPUT_PATH, request.inputJson);
+      // Streamed: the input carries the full font array (multiple megabytes).
+      await sandbox.fs.writeTextFile(INPUT_PATH, chunkedTextStream(request.inputJson));
 
       const child = await sandbox.spawn("deno", {
         // The input path is a fixed, service-owned constant: no user input is
@@ -302,7 +336,7 @@ export class DenoSandboxDriver implements SandboxDriver {
         ],
         cwd: WORKDIR,
         clearEnv: true,
-        env: {},
+        env: GUEST_ENV,
         stdin: "null",
         stdout: "piped",
         stderr: "piped",

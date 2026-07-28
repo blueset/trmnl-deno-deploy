@@ -1,5 +1,6 @@
 import { assertEquals } from "@std/assert";
 import {
+  chunkedTextStream,
   describeThrown,
   readStreamCapped,
   redactSecrets,
@@ -149,6 +150,31 @@ Deno.test("declared expression errors are passed through verbatim", async () => 
   if (outcome.ok) return;
   assertEquals(outcome.failure.code, "invalid_filter");
   assertEquals(outcome.failure.message, "SyntaxError: bad");
+});
+
+Deno.test("chunked text streams reassemble exactly, including split surrogate pairs", async () => {
+  const text = `${"a".repeat(1000)}😀${"b".repeat(1000)}`;
+  const reader = chunkedTextStream(text, 1001).pipeThrough(new TextEncoderStream()).getReader();
+  const bytes: Uint8Array[] = [];
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    bytes.push(value);
+  }
+  const total = bytes.reduce((n, c) => n + c.byteLength, 0);
+  const merged = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of bytes) {
+    merged.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  assertEquals(new TextDecoder().decode(merged), text);
+  assertEquals(bytes.length > 1, true);
+});
+
+Deno.test("chunked text streams handle empty input", async () => {
+  const reader = chunkedTextStream("").getReader();
+  assertEquals((await reader.read()).done, true);
 });
 
 Deno.test("thrown values are described safely for logs", () => {
