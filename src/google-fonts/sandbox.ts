@@ -99,6 +99,25 @@ export async function readStreamCapped(
   return { text: new TextDecoder().decode(merged), truncated };
 }
 
+/** Strips anything that looks like a Deno Deploy token from diagnostic text. */
+export function redactSecrets(text: string): string {
+  return text.replace(/dd[opw]_[A-Za-z0-9_-]+/g, "dd*_[redacted]");
+}
+
+/** Bounded, redacted description of a thrown value, for server-side logs only. */
+export function describeThrown(error: unknown): { name: string; detail: string } {
+  const name = error instanceof Error ? error.name : typeof error;
+  let detail: string;
+  try {
+    detail = error instanceof Error ? error.message : String(error);
+  } catch {
+    detail = "unrepresentable value";
+  }
+  detail = redactSecrets(detail).replace(/[\r\n\t]+/g, " ");
+  if (detail.length > 300) detail = `${detail.slice(0, 300)}…`;
+  return { name, detail };
+}
+
 /** Composes a driver with strict validation of everything it returns. */
 export class SandboxEvaluator implements Evaluator {
   readonly #driver: SandboxDriver;
@@ -126,10 +145,14 @@ export class SandboxEvaluator implements Evaluator {
         maxOutputBytes: this.#maxOutputBytes,
       });
     } catch (error) {
+      const described = describeThrown(error);
       logger.error("sandbox.execution", {
         outcome: "driver_error",
         durationMs: this.#now() - startedAt,
-        reason: error instanceof Error ? error.name : "unknown",
+        reason: described.name,
+        // Server-side only, bounded and token-redacted. Never returned to the
+        // client, which receives the generic message below.
+        detail: described.detail,
       });
       return {
         ok: false,
@@ -232,7 +255,13 @@ export class DenoSandboxDriver implements SandboxDriver {
 
   async run(request: SandboxRunRequest): Promise<SandboxRunResult> {
     const { Sandbox } = await import("@deno/sandbox");
+    // Passed explicitly rather than relying on the SDK's `process.env` lookup,
+    // which depends on the Node compatibility shim being populated.
+    const token = Deno.env.get("DENO_DEPLOY_TOKEN");
+    const org = Deno.env.get("DENO_DEPLOY_ORG");
     const sandbox = await Sandbox.create({
+      ...(token ? { token } : {}),
+      ...(org ? { org } : {}),
       // No outbound network access whatsoever.
       allowNet: [],
       memory: `${this.#memoryMb}MiB`,

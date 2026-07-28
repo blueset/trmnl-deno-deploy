@@ -1,6 +1,8 @@
 import { assertEquals } from "@std/assert";
 import {
+  describeThrown,
   readStreamCapped,
+  redactSecrets,
   type SandboxDriver,
   SandboxEvaluator,
   type SandboxRunRequest,
@@ -147,6 +149,24 @@ Deno.test("declared expression errors are passed through verbatim", async () => 
   if (outcome.ok) return;
   assertEquals(outcome.failure.code, "invalid_filter");
   assertEquals(outcome.failure.message, "SyntaxError: bad");
+});
+
+Deno.test("thrown values are described safely for logs", () => {
+  assertEquals(describeThrown(new TypeError("bad")), { name: "TypeError", detail: "bad" });
+  assertEquals(describeThrown("plain").name, "string");
+  assertEquals(describeThrown(new Error("a\nb\tc")).detail, "a b c");
+  assertEquals(describeThrown(new Error("x".repeat(500))).detail.length, 301);
+});
+
+Deno.test("token material is redacted from diagnostics", () => {
+  assertEquals(
+    redactSecrets("auth failed for ddo_AbC123-xyz_9 at api"),
+    "auth failed for dd*_[redacted] at api",
+  );
+  assertEquals(
+    describeThrown(new Error("bad token ddp_SECRETVALUE123")).detail.includes("SECRETVALUE"),
+    false,
+  );
 });
 
 Deno.test("the runner is uploaded verbatim and input is passed as JSON, never as a command", async () => {
